@@ -96,12 +96,9 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install Railway CLI
-        run: npm install -g railway
-
       - name: Deploy to Railway
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_API_TOKEN }}
         run: |
           
-          railway up --service gps-gateway
+          npx @railway/cli up --service gps-gateway
