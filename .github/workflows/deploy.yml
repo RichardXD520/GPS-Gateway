@@ -89,8 +89,8 @@ jobs:
         push: true
         tags: ${{ steps.meta.outputs.tags }}
         labels: ${{ steps.meta.outputs.labels }}
-
-  deploy:
+        
+    deploy:
     needs: [test, build-and-push]
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -98,16 +98,16 @@ jobs:
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
-    
+
     - name: Install Railway CLI
       run: |
         curl -fsSL https://railway.app/install.sh | sh
         echo "$HOME/.railway/bin" >> $GITHUB_PATH
-    
-    - name: Deploy to Railway
-  run: |
-    railway login --token $RAILWAY_TOKEN
-    railway link -p 55c25933-c404-41eb-8639-a1191285aa42 -s gps-gateway
-    railway redeploy --service gps-gateway -y
-  env:
-    RAILWAY_TOKEN: ${{ secrets.RAILWAY_API_TOKEN }}
+
+    - name: Login and Deploy to Railway
+      run: |
+        railway login --token $RAILWAY_TOKEN
+        railway link -p 55c25933-c404-41eb-8639-a1191285aa42 -s gps-gateway
+        railway redeploy --service gps-gateway -y
+      env:
+        RAILWAY_TOKEN: ${{ secrets.RAILWAY_API_TOKEN }}
