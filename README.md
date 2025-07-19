@@ -6,6 +6,8 @@ Gateway para microservicios del sistema GPS con autenticación JWT.
 
 ```bash
 npm install
+
+
 ```
 
 ## Uso
