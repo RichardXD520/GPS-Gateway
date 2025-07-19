@@ -40,6 +40,7 @@ jobs:
         PORT: 3000
         USUARIOS_URL: https://users-microservice-production.up.railway.app
         INVENTARIO_URL: https://inventory-microservice-production-a316.up.railway.app
+        JWT_SECRET: test-secret-key-for-ci
       run: |
         timeout 10s npm start || code=$?
         if [[ $code -ne 124 && $code -ne 0 ]]; then
