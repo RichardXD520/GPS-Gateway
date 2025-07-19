@@ -1,10 +1,15 @@
-name: Deploy to Railway
+name: Deploy GPS Gateway to Railway
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [ "main" ]
   pull_request:
-    branches: [ main, master ]
+    branches: [ "main" ]
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}/gps-gateway
 
 jobs:
   test:
@@ -15,9 +20,10 @@ jobs:
         node-version: [16.x, 18.x]
     
     steps:
-    - uses: actions/checkout@v3
+    - name: Checkout repository
+      uses: actions/checkout@v4
     
-    - name: Use Node.js ${{ matrix.node-version }}
+    - name: Setup Node.js ${{ matrix.node-version }}
       uses: actions/setup-node@v3
       with:
         node-version: ${{ matrix.node-version }}
@@ -27,36 +33,73 @@ jobs:
       run: npm ci
     
     - name: Run tests
-      run: npm test --if-present
+      run: npm test
     
     - name: Check if server starts
+      env:
+        PORT: 3000
+        USUARIOS_URL: https://users-microservice-production.up.railway.app
+        INVENTARIO_URL: https://inventory-microservice-production-a316.up.railway.app
       run: |
         timeout 10s npm start || code=$?
         if [[ $code -ne 124 && $code -ne 0 ]]; then
           exit $code
         fi
 
-  deploy:
+  build-and-push:
     needs: test
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Log in to the Container registry
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Extract metadata (tags, labels) for Docker
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+        tags: |
+          type=ref,event=branch
+          type=ref,event=pr
+          type=raw,value=latest,enable={{is_default_branch}}
+
+    - name: Build and push Docker image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        push: true
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+
+  deploy:
+    needs: [test, build-and-push]
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     
     steps:
-    - uses: actions/checkout@v3
-    
-    - name: Use Node.js 18.x
-      uses: actions/setup-node@v3
-      with:
-        node-version: 18.x
-        cache: 'npm'
-    
-    - name: Install dependencies
-      run: npm ci
+    - name: Checkout repository
+      uses: actions/checkout@v4
     
     - name: Install Railway CLI
-      run: npm install -g @railway/cli
+      run: |
+        curl -fsSL https://railway.app/install.sh | sh
+        echo "$HOME/.railway/bin" >> $GITHUB_PATH
     
     - name: Deploy to Railway
-      run: railway up --service gateway
+      run: |
+        railway link -p 55c25933-c404-41eb-8639-a1191285aa42 -s gps-gateway
+        railway redeploy --service gps-gateway -y
       env:
-        RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        RAILWAY_API_TOKEN: ${{ secrets.RAILWAY_API_TOKEN }}
