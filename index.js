@@ -1,5 +1,6 @@
 const express = require('express');
 const { createProxyMiddleware } = require('http-proxy-middleware');
+const jwt = require('jsonwebtoken');
 require('dotenv').config();
 
 const app = express();
@@ -21,7 +22,35 @@ app.use((req, res, next) => {
   }
 });
 
-// Health check endpoint
+// Middleware de autenticación JWT
+const authenticateToken = (req, res, next) => {
+  // Rutas públicas que no requieren autenticación
+  const publicRoutes = ['/health', '/usuarios/login', '/usuarios/register'];
+  
+  if (publicRoutes.includes(req.path)) {
+    return next();
+  }
+
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.split(' ')[1]; // Bearer TOKEN
+
+  if (!token) {
+    return res.status(401).json({ error: 'Access token required' });
+  }
+
+  jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key', (err, user) => {
+    if (err) {
+      return res.status(403).json({ error: 'Invalid or expired token' });
+    }
+    req.user = user;
+    next();
+  });
+};
+
+// Aplicar autenticación a todas las rutas excepto las públicas
+app.use(authenticateToken);
+
+// Health check endpoint (público)
 app.get('/health', (req, res) => {
   res.json({ status: 'Gateway is running', timestamp: new Date().toISOString() });
 });
@@ -33,6 +62,14 @@ const proxyOptions = {
   onError: (err, req, res) => {
     console.error(`Proxy error: ${err.message}`);
     res.status(500).json({ error: 'Service temporarily unavailable' });
+  },
+  onProxyReq: (proxyReq, req, res) => {
+    // Pasar información del usuario autenticado a los microservicios
+    if (req.user) {
+      proxyReq.setHeader('X-User-Id', req.user.id);
+      proxyReq.setHeader('X-User-Email', req.user.email);
+      proxyReq.setHeader('X-User-Role', req.user.role);
+    }
   }
 };
 
