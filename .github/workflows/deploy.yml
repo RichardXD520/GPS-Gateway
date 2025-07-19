@@ -33,6 +33,9 @@ jobs:
       run: npm ci
     
     - name: Run tests
+      env:
+        JWT_SECRET: test-secret-key-for-ci
+        NODE_ENV: test
       run: npm test
     
     - name: Check if server starts
