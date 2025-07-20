@@ -7,18 +7,16 @@ class TransactionsMiddleware {
       const { method, params } = req;
       const userRoles = req.user.roles?.map(role => role.roleName) || [];
       
-      // Solo buyers, supervisors y admins pueden crear/modificar compras
-      if (['POST', 'PUT', 'DELETE'].includes(method)) {
-        const canModifyPurchases = userRoles.some(role => 
-          ['buyer', 'supervisor', 'admin'].includes(role)
-        );
-        
-        if (!canModifyPurchases) {
-          return res.status(403).json({
-            status: 'error',
-            message: 'Se requiere rol de buyer, supervisor o admin para modificar compras'
-          });
-        }
+      // Solo buyers, supervisors y admins pueden acceder a compras (lectura y escritura)
+      const canAccessPurchases = userRoles.some(role => 
+        ['buyer', 'supervisor', 'admin'].includes(role)
+      );
+      
+      if (!canAccessPurchases) {
+        return res.status(403).json({
+          status: 'error',
+          message: 'Se requiere rol de buyer, supervisor o admin para acceder a compras'
+        });
       }
 
       // Log de acceso a compras
@@ -39,18 +37,16 @@ class TransactionsMiddleware {
       const { method, params } = req;
       const userRoles = req.user.roles?.map(role => role.roleName) || [];
       
-      // Solo sellers, supervisors y admins pueden crear/modificar ventas
-      if (['POST', 'PUT', 'DELETE'].includes(method)) {
-        const canModifySales = userRoles.some(role => 
-          ['seller', 'supervisor', 'admin'].includes(role)
-        );
-        
-        if (!canModifySales) {
-          return res.status(403).json({
-            status: 'error',
-            message: 'Se requiere rol de seller, supervisor o admin para modificar ventas'
-          });
-        }
+      // Solo sellers, supervisors y admins pueden acceder a ventas (lectura y escritura)
+      const canAccessSales = userRoles.some(role => 
+        ['seller', 'supervisor', 'admin'].includes(role)
+      );
+      
+      if (!canAccessSales) {
+        return res.status(403).json({
+          status: 'error',
+          message: 'Se requiere rol de seller, supervisor o admin para acceder a ventas'
+        });
       }
 
       console.log(`Sales access: ${method} ${req.originalUrl} by ${req.user.email}`);

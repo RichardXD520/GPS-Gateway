@@ -175,7 +175,7 @@ describe('GPS Gateway Tests', () => {
       
       expect(response.statusCode).toBe(403);
       expect(response.body.status).toBe('error');
-      expect(response.body.message).toBe('Se requiere rol de buyer, supervisor o admin para modificar compras');
+      expect(response.body.message).toBe('Se requiere rol de buyer, supervisor o admin para acceder a compras'); // Updated message
     });
   });
 });
