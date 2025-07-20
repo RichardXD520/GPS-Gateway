@@ -6,29 +6,33 @@ describe('GPS Gateway Tests', () => {
   let app;
   const testSecret = 'test-secret';
   
-  // Enhanced test tokens with roles and permissions
+  // Admin Token
+  const adminToken = jwt.sign({
+    id: 1,
+    email: 'admin@test.com',
+    roles: [{
+      roleName: 'admin',
+      permissions: [{ permissionName: 'INVENTORY_WRITE' }]
+    }]
+  }, testSecret, { expiresIn: '24h' });
+
+  // User Token
   const validUserToken = jwt.sign(
     { 
-      id: 1, 
-      email: 'test@example.com', 
+      id: 2, 
+      email: 'user@test.com', 
       roles: [{ roleName: 'user' }] 
     }, 
     testSecret,
-    { expiresIn: '1h' }
+    { expiresIn: '24h' }
   );
 
-  const adminToken = jwt.sign(
-    { 
-      id: 2, 
-      email: 'admin@example.com', 
-      roles: [{ 
-        roleName: 'admin',
-        permissions: [{ permissionName: 'INVENTORY_WRITE' }]
-      }] 
-    }, 
-    testSecret,
-    { expiresIn: '1h' }
-  );
+  // Buyer Token
+  const buyerToken = jwt.sign({
+    id: 3,
+    email: 'buyer@test.com',
+    roles: [{ roleName: 'buyer' }]
+  }, testSecret, { expiresIn: '24h' });
 
   beforeAll(() => {
     process.env.NODE_ENV = 'test';
@@ -150,16 +154,6 @@ describe('GPS Gateway Tests', () => {
 
   describe('Transactions Middleware', () => {
     test('Should allow purchase access for admin', async () => {
-      const buyerToken = jwt.sign(
-        { 
-          id: 3, 
-          email: 'buyer@example.com', 
-          roles: [{ roleName: 'buyer' }] 
-        }, 
-        testSecret,
-        { expiresIn: '1h' }
-      );
-
       const response = await request(app)
         .get('/api/purchases')
         .set('Authorization', `Bearer ${buyerToken}`);
