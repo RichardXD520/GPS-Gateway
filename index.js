@@ -1,12 +1,21 @@
 const express = require('express');
 const { createProxyMiddleware } = require('http-proxy-middleware');
 const jwt = require('jsonwebtoken');
+const { AuthMiddleware } = require('./middlewares/auth.middleware');
+const { checkPermissions } = require('./middlewares/permissions.middleware');
+const { UsersMiddleware } = require('./middlewares/users.middleware');
+const { InventoryMiddleware } = require('./middlewares/inventory.middleware');
+const { TransactionsMiddleware } = require('./middlewares/transactions.middleware');
 require('dotenv').config();
 
 const createApp = () => {
   const app = express();
+  const authMiddleware = new AuthMiddleware();
+  const usersMiddleware = new UsersMiddleware();
+  const inventoryMiddleware = new InventoryMiddleware();
+  const transactionsMiddleware = new TransactionsMiddleware();
 
-  // Middleware para logging y CORS
+  // Middleware básico
   app.use(express.json());
   app.use((req, res, next) => {
     console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
@@ -14,7 +23,6 @@ const createApp = () => {
     res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
     res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
     
-    // Manejar preflight OPTIONS requests
     if (req.method === 'OPTIONS') {
       res.sendStatus(200);
     } else {
@@ -22,75 +30,199 @@ const createApp = () => {
     }
   });
 
-  // Middleware de autenticación JWT
-  const authenticateToken = (req, res, next) => {
-    // Rutas públicas que no requieren autenticación
-    const publicRoutes = ['/health', '/usuarios/login', '/usuarios/register'];
-    
+  // Rutas públicas
+  const publicRoutes = ['/health', '/usuarios/login', '/usuarios/register', '/hola'];
+  
+  app.use((req, res, next) => {
     if (publicRoutes.includes(req.path)) {
       return next();
     }
+    return authMiddleware.verifyToken(req, res, next);
+  });
 
-    const authHeader = req.headers['authorization'];
-    const token = authHeader && authHeader.split(' ')[1]; // Bearer TOKEN
-
-    if (!token) {
-      return res.status(401).json({ error: 'Access token required' });
-    }
-
-    jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key', (err, user) => {
-      if (err) {
-        return res.status(403).json({ error: 'Invalid or expired token' });
-      }
-      req.user = user;
-      next();
-    });
-  };
-
-  // Aplicar autenticación a todas las rutas excepto las públicas
-  app.use(authenticateToken);
-
-  // Health check endpoint (público)
+  // Health check
   app.get('/health', (req, res) => {
     res.json({ status: 'Gateway is running', timestamp: new Date().toISOString() });
   });
 
-  // Configuración de proxies con manejo de errores
+  // Proxy options
   const proxyOptions = {
     changeOrigin: true,
     timeout: 10000,
     onError: (err, req, res) => {
       console.error(`Proxy error: ${err.message}`);
-      res.status(500).json({ error: 'Service temporarily unavailable' });
+      res.status(500).json({ 
+        status: 'error',
+        message: 'Service temporarily unavailable',
+        service: req.originalUrl.split('/')[1]
+      });
     },
     onProxyReq: (proxyReq, req, res) => {
-      // Pasar información del usuario autenticado a los microservicios
       if (req.user) {
         proxyReq.setHeader('X-User-Id', req.user.id);
         proxyReq.setHeader('X-User-Email', req.user.email);
-        proxyReq.setHeader('X-User-Role', req.user.role);
+        proxyReq.setHeader('X-User-Role', JSON.stringify(req.user.roles || []));
+        proxyReq.setHeader('X-User-Permissions', JSON.stringify(req.user.permissions || []));
+        proxyReq.setHeader('X-Gateway-Source', 'gps-gateway');
+        proxyReq.setHeader('X-Request-Timestamp', new Date().toISOString());
       }
     }
   };
 
-  app.use('/usuarios', createProxyMiddleware({
-    target: process.env.USUARIOS_URL,
-    pathRewrite: { '^/usuarios': '' },
-    ...proxyOptions
-  }));
+  // ============= USERS MICROSERVICE =============
+  
+  // Admin routes for users (requires admin role)
+  app.use('/usuarios/admin', 
+    authMiddleware.hasRole(['admin']),
+    createProxyMiddleware({
+      target: process.env.USUARIOS_URL,
+      pathRewrite: { '^/usuarios/admin': '/admin' },
+      ...proxyOptions
+    })
+  );
 
-  app.use('/inventario', createProxyMiddleware({
-    target: process.env.INVENTARIO_URL,
-    pathRewrite: { '^/inventario': '' },
-    ...proxyOptions
-  }));
+  // Role management (admin only)
+  app.use('/api/roles',
+    authMiddleware.hasRole(['admin']),
+    createProxyMiddleware({
+      target: process.env.USUARIOS_URL,
+      pathRewrite: { '^/api/roles': '/api/roles' },
+      ...proxyOptions
+    })
+  );
 
-  // Agrega más microservicios aquí...
+  // Permission management (admin only)
+  app.use('/api/permissions',
+    authMiddleware.hasRole(['admin']),
+    createProxyMiddleware({
+      target: process.env.USUARIOS_URL,
+      pathRewrite: { '^/api/permissions': '/api/permissions' },
+      ...proxyOptions
+    })
+  );
+
+  // User management with specific validation
+  app.use('/usuarios',
+    usersMiddleware.validateUserAccess,
+    createProxyMiddleware({
+      target: process.env.USUARIOS_URL,
+      pathRewrite: { '^/usuarios': '/usuarios' },
+      ...proxyOptions
+    })
+  );
+
+  // Beneficiary management
+  app.use('/beneficiarios',
+    authMiddleware.hasRole(['admin', 'supervisor']),
+    createProxyMiddleware({
+      target: process.env.USUARIOS_URL,
+      pathRewrite: { '^/beneficiarios': '/beneficiarios' },
+      ...proxyOptions
+    })
+  );
+
+  // ============= INVENTORY MICROSERVICE =============
+
+  // Warehouse management (supervisor/admin only for modifications)
+  app.use('/api/bodegas',
+    inventoryMiddleware.validateWarehouseAccess,
+    createProxyMiddleware({
+      target: process.env.INVENTARIO_URL,
+      pathRewrite: { '^/api/bodegas': '/api/bodegas' },
+      ...proxyOptions
+    })
+  );
+
+  // Batch management
+  app.use('/api/lotes',
+    inventoryMiddleware.validateBatchAccess,
+    inventoryMiddleware.validateInventoryWrite,
+    createProxyMiddleware({
+      target: process.env.INVENTARIO_URL,
+      pathRewrite: { '^/api/lotes': '/api/lotes' },
+      ...proxyOptions
+    })
+  );
+
+  // Product management
+  app.use('/api/productos',
+    inventoryMiddleware.validateInventoryRead,
+    createProxyMiddleware({
+      target: process.env.INVENTARIO_URL,
+      pathRewrite: { '^/api/productos': '/api/productos' },
+      ...proxyOptions
+    })
+  );
+
+  // ============= TRANSACTIONS MICROSERVICE =============
+
+  // Purchase transactions with RUT validation
+  app.use('/api/purchases/person/:rut',
+    transactionsMiddleware.validateRutAccess,
+    transactionsMiddleware.validatePurchaseAccess,
+    createProxyMiddleware({
+      target: process.env.TRANSACCIONES_URL,
+      pathRewrite: { '^/api/purchases': '/api/purchases' },
+      ...proxyOptions
+    })
+  );
+
+  // Purchase transactions with date range
+  app.use('/api/purchases/date-range',
+    transactionsMiddleware.validateDateRangeAccess,
+    transactionsMiddleware.validatePurchaseAccess,
+    createProxyMiddleware({
+      target: process.env.TRANSACCIONES_URL,
+      pathRewrite: { '^/api/purchases': '/api/purchases' },
+      ...proxyOptions
+    })
+  );
+
+  // General purchase transactions
+  app.use('/api/purchases',
+    transactionsMiddleware.validatePurchaseAccess,
+    createProxyMiddleware({
+      target: process.env.TRANSACCIONES_URL,
+      pathRewrite: { '^/api/purchases': '/api/purchases' },
+      ...proxyOptions
+    })
+  );
+
+  // Sales transactions with RUT validation
+  app.use('/api/sales/person/:rut',
+    transactionsMiddleware.validateRutAccess,
+    transactionsMiddleware.validateSalesAccess,
+    createProxyMiddleware({
+      target: process.env.TRANSACCIONES_URL,
+      pathRewrite: { '^/api/sales': '/api/sales' },
+      ...proxyOptions
+    })
+  );
+
+  // Sales transactions with date range
+  app.use('/api/sales/date-range',
+    transactionsMiddleware.validateDateRangeAccess,
+    transactionsMiddleware.validateSalesAccess,
+    createProxyMiddleware({
+      target: process.env.TRANSACCIONES_URL,
+      pathRewrite: { '^/api/sales': '/api/sales' },
+      ...proxyOptions
+    })
+  );
+
+  // General sales transactions
+  app.use('/api/sales',
+    transactionsMiddleware.validateSalesAccess,
+    createProxyMiddleware({
+      target: process.env.TRANSACCIONES_URL,
+      pathRewrite: { '^/api/sales': '/api/sales' },
+      ...proxyOptions
+    })
+  );
 
   return app;
 };
 
-// Solo iniciar el servidor si este archivo se ejecuta directamente
 if (require.main === module) {
   const app = createApp();
   const PORT = process.env.PORT || 3000;
