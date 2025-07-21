@@ -49,7 +49,7 @@ const createApp = () => {
   });
 
   // Rutas públicas
-  const publicRoutes = ['/health', '/usuarios/login', '/usuarios/register', '/hola', '/test'];
+  const publicRoutes = ['/health', '/usuarios/login', '/usuarios/register', '/hola', '/test', '/deployment-test'];
   
   app.use((req, res, next) => {
     if (publicRoutes.includes(req.path)) {
@@ -70,6 +70,28 @@ const createApp = () => {
       status: 'success', 
       message: 'Test endpoint working',
       receivedBody: req.body 
+    });
+  });
+
+  // Deployment verification endpoint
+  app.get('/deployment-test', (req, res) => {
+    res.json({
+      status: 'success',
+      message: 'Deployment verification endpoint',
+      deploymentId: 'v2.1.0-fixed-502-errors',
+      timestamp: new Date().toISOString(),
+      features: [
+        'Custom HTTPS proxy for registration',
+        'Field transformation (email -> username)',
+        'Fallback environment variables',
+        'Enhanced error handling'
+      ],
+      environment: {
+        nodeEnv: process.env.NODE_ENV || 'development',
+        usuariosUrl: process.env.USUARIOS_URL ? 'SET' : 'NOT SET',
+        inventarioUrl: process.env.INVENTARIO_URL ? 'SET' : 'NOT SET',
+        transaccionesUrl: process.env.TRANSACCIONES_URL ? 'SET' : 'NOT SET'
+      }
     });
   });
 
