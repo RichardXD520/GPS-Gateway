@@ -182,13 +182,43 @@ const createApp = () => {
   });
 
   // Public user routes (login, register) - no authentication required
-  app.use('/usuarios/login',
-    createProxyMiddleware({
-      target: process.env.USUARIOS_URL,
-      pathRewrite: { '^/usuarios/login': '/api/usuarios/login' },
-      ...proxyOptions
-    })
-  );
+  app.use('/usuarios/login', (req, res) => {
+    console.log('Login endpoint - Request body:', req.body);
+    
+    const https = require('https');
+    const url = require('url');
+    
+    const targetUrl = url.parse(process.env.USUARIOS_URL + '/api/usuarios/login');
+    
+    const options = {
+      hostname: targetUrl.hostname,
+      port: targetUrl.port || 443,
+      path: targetUrl.path,
+      method: req.method,
+      headers: {
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(JSON.stringify(req.body))
+      }
+    };
+    
+    const proxyReq = https.request(options, (proxyRes) => {
+      console.log('Login proxy response status:', proxyRes.statusCode);
+      
+      res.writeHead(proxyRes.statusCode, proxyRes.headers);
+      proxyRes.pipe(res);
+    });
+    
+    proxyReq.on('error', (error) => {
+      console.error('Login proxy error:', error);
+      res.status(500).json({ 
+        status: 'error',
+        message: 'Service temporarily unavailable'
+      });
+    });
+    
+    proxyReq.write(JSON.stringify(req.body));
+    proxyReq.end();
+  });
 
   // Simple proxy for registration endpoint
   app.use('/usuarios/register', (req, res) => {
