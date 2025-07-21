@@ -91,7 +91,7 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-    deploy-to-railway:
+  deploy-to-railway:
     needs: build-and-push
     runs-on: ubuntu-latest
     steps:
