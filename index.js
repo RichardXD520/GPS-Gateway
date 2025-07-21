@@ -49,7 +49,7 @@ const createApp = () => {
   });
 
   // Rutas públicas
-  const publicRoutes = ['/health', '/usuarios/login', '/usuarios/register', '/hola', '/test', '/deployment-test'];
+  const publicRoutes = ['/health', '/usuarios/login', '/usuarios/register', '/api/usuarios/register', '/hola', '/test', '/deployment-test'];
   
   app.use((req, res, next) => {
     if (publicRoutes.includes(req.path)) {
