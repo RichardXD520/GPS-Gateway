@@ -58,6 +58,13 @@ const createApp = () => {
       });
     },
     onProxyReq: (proxyReq, req, res) => {
+      // Siempre enviar el token Authorization si existe
+      if (req.headers.authorization) {
+        proxyReq.setHeader('Authorization', req.headers.authorization);
+        console.log('Forwarding Authorization header to microservice');
+      }
+      
+      // Enviar info del usuario si está disponible
       if (req.user) {
         proxyReq.setHeader('X-User-Id', req.user.id);
         proxyReq.setHeader('X-User-Email', req.user.email);

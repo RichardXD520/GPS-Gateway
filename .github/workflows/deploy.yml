@@ -38,15 +38,16 @@ jobs:
           NODE_ENV: test
           USUARIOS_URL: http://localhost:4001
           INVENTARIO_URL: http://localhost:4002
-          TRANSACCIONES_URL: http://localhost:4003  # Add this line
+          TRANSACCIONES_URL: http://localhost:4003
         run: npm test
 
       - name: Check if server starts
         env:
           PORT: 3000
           USUARIOS_URL: https://users-microservice-production.up.railway.app
-          INVENTARIO_URL: https://inventory-microservice-production-a316.up.railway.app
-          TRANSACCIONES_URL: https://transactions-microservice-production.up.railway.app  # Add this line
+          INVENTARIO_URL: https://inventario-gps-production.up.railway.app
+          TRANSACCIONES_URL: https://inventory-microservice-production-a316.up.railway.app
+          FRONTUSERLIST_URL: https://frontuserslist-production.up.railway.app
           JWT_SECRET: test-secret-key-for-ci
         run: |
           timeout 10s npm start || code=$?
