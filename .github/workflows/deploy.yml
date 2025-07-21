@@ -82,7 +82,7 @@ jobs:
           tags: |
             type=ref,event=branch
             type=ref,event=pr
-            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+            type=raw,value=latest
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
@@ -91,6 +91,7 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+
   deploy-to-railway:
     needs: build-and-push
     runs-on: ubuntu-latest
@@ -98,14 +99,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup Node.js (for Railway CLI)
-        uses: actions/setup-node@v3
-        with:
-          node-version: 18
-
       - name: Deploy to Railway using latest CLI
-  env:
-    RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
-  run: npx @railway/cli up --service gps-gateway --no-confirm
-
-
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: npx @railway/cli up --service gps-gateway --no-confirm
