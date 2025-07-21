@@ -6,9 +6,25 @@ const { checkPermissions } = require('./middlewares/permissions.middleware');
 const { UsersMiddleware } = require('./middlewares/users.middleware');
 const { InventoryMiddleware } = require('./middlewares/inventory.middleware');
 const { TransactionsMiddleware } = require('./middlewares/transactions.middleware');
-require('dotenv').config();
+require('dotenv').config({ path: require('path').join(__dirname, '.env') });
+
+// Fallback environment variables if .env is not loaded
+if (!process.env.USUARIOS_URL) {
+  process.env.USUARIOS_URL = 'https://users-microservice-production.up.railway.app';
+  process.env.INVENTARIO_URL = 'https://inventario-gps-production.up.railway.app';
+  process.env.TRANSACCIONES_URL = 'https://inventory-microservice-production-a316.up.railway.app';
+  process.env.FRONTUSERLIST_URL = 'https://frontuserslist-production.up.railway.app';
+  console.log('Using fallback environment variables');
+}
 
 const createApp = () => {
+  // Debug: Log environment variables
+  console.log('Environment variables:');
+  console.log('USUARIOS_URL:', process.env.USUARIOS_URL);
+  console.log('INVENTARIO_URL:', process.env.INVENTARIO_URL);
+  console.log('TRANSACCIONES_URL:', process.env.TRANSACCIONES_URL);
+  console.log('FRONTUSERLIST_URL:', process.env.FRONTUSERLIST_URL);
+  
   const app = express();
   const authMiddleware = new AuthMiddleware();
   const usersMiddleware = new UsersMiddleware();
@@ -19,6 +35,8 @@ const createApp = () => {
   app.use(express.json());
   app.use((req, res, next) => {
     console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
+    console.log('Request body:', req.body);
+    console.log('Content-Type:', req.headers['content-type']);
     res.header('Access-Control-Allow-Origin', '*');
     res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
     res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
@@ -31,7 +49,7 @@ const createApp = () => {
   });
 
   // Rutas públicas
-  const publicRoutes = ['/health', '/usuarios/login', '/usuarios/register', '/hola'];
+  const publicRoutes = ['/health', '/usuarios/login', '/usuarios/register', '/hola', '/test'];
   
   app.use((req, res, next) => {
     if (publicRoutes.includes(req.path)) {
@@ -45,12 +63,24 @@ const createApp = () => {
     res.json({ status: 'Gateway is running', timestamp: new Date().toISOString() });
   });
 
+  // Test endpoint to check if the issue is with the proxy
+  app.post('/test', (req, res) => {
+    console.log('Test endpoint - Request body:', req.body);
+    res.json({ 
+      status: 'success', 
+      message: 'Test endpoint working',
+      receivedBody: req.body 
+    });
+  });
+
   // Proxy options
   const proxyOptions = {
     changeOrigin: true,
-    timeout: 10000,
+    timeout: 30000, // Increased timeout to 30 seconds
     onError: (err, req, res) => {
       console.error(`Proxy error: ${err.message}`);
+      console.error(`Request URL: ${req.originalUrl}`);
+      console.error(`Request method: ${req.method}`);
       res.status(500).json({ 
         status: 'error',
         message: 'Service temporarily unavailable',
@@ -108,6 +138,27 @@ const createApp = () => {
     })
   );
 
+  // Middleware to transform email to username for login and registration
+  app.use('/usuarios/login', (req, res, next) => {
+    console.log('Login middleware - Original body:', req.body);
+    if (req.body && req.body.email) {
+      req.body.username = req.body.email;
+      delete req.body.email;
+      console.log('Login middleware - Transformed body:', req.body);
+    }
+    next();
+  });
+
+  app.use('/usuarios/register', (req, res, next) => {
+    console.log('Register middleware - Original body:', req.body);
+    if (req.body && req.body.email) {
+      req.body.username = req.body.email;
+      delete req.body.email;
+      console.log('Register middleware - Transformed body:', req.body);
+    }
+    next();
+  });
+
   // Public user routes (login, register) - no authentication required
   app.use('/usuarios/login',
     createProxyMiddleware({
@@ -117,13 +168,44 @@ const createApp = () => {
     })
   );
 
-  app.use('/usuarios/register',
-    createProxyMiddleware({
-      target: process.env.USUARIOS_URL,
-      pathRewrite: { '^/usuarios/register': '/api/usuarios/register' },
-      ...proxyOptions
-    })
-  );
+  // Simple proxy for registration endpoint
+  app.use('/usuarios/register', (req, res) => {
+    console.log('Register endpoint - Request body:', req.body);
+    
+    const https = require('https');
+    const url = require('url');
+    
+    const targetUrl = url.parse(process.env.USUARIOS_URL + '/api/usuarios/register');
+    
+    const options = {
+      hostname: targetUrl.hostname,
+      port: targetUrl.port || 443,
+      path: targetUrl.path,
+      method: req.method,
+      headers: {
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(JSON.stringify(req.body))
+      }
+    };
+    
+    const proxyReq = https.request(options, (proxyRes) => {
+      console.log('Proxy response status:', proxyRes.statusCode);
+      
+      res.writeHead(proxyRes.statusCode, proxyRes.headers);
+      proxyRes.pipe(res);
+    });
+    
+    proxyReq.on('error', (error) => {
+      console.error('Proxy error:', error);
+      res.status(500).json({ 
+        status: 'error',
+        message: 'Service temporarily unavailable'
+      });
+    });
+    
+    proxyReq.write(JSON.stringify(req.body));
+    proxyReq.end();
+  });
 
   // Protected user management routes with specific validation
   app.use('/usuarios',
