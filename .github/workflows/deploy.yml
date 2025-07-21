@@ -1,32 +1,68 @@
-name: Deploy GPS Gateway to Railway
+name: CI - Build, Test and Deploy GPS Gateway
 
 on:
   push:
-    branches: ["main"]
-  pull_request:
-    branches: ["main"]
-  workflow_dispatch:
+    branches: [ "main" ]
+  workflow_dispatch:  # Allow manual triggers
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository_owner }}/gps-gateway
+  IMAGE_NAME: ${{ github.repository }}/gps-gateway
 
 jobs:
-  build:
+  build-test-and-push:
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
-      id-token: write
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: 'package-lock.json'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Setup test environment
+        run: |
+          echo "Setting up test environment variables..."
+          echo "NODE_ENV=test" >> $GITHUB_ENV
+
+      - name: Run tests
+        run: npm test
+        env:
+          NODE_ENV: test
+          JWT_SECRET: test-secret-key-for-ci
+          USUARIOS_URL: https://users-microservice-production.up.railway.app
+          INVENTARIO_URL: https://inventario-gps-production.up.railway.app
+          TRANSACCIONES_URL: https://inventory-microservice-production-a316.up.railway.app
+          FRONTUSERLIST_URL: https://frontuserslist-production.up.railway.app
+
+      - name: Test server startup
+        run: |
+          timeout 10s npm start || code=$?
+          if [[ $code -ne 124 && $code -ne 0 ]]; then
+            exit $code
+          fi
+        env:
+          NODE_ENV: test
+          JWT_SECRET: test-secret-key-for-ci
+          USUARIOS_URL: https://users-microservice-production.up.railway.app
+          INVENTARIO_URL: https://inventario-gps-production.up.railway.app
+          TRANSACCIONES_URL: https://inventory-microservice-production-a316.up.railway.app
+          FRONTUSERLIST_URL: https://frontuserslist-production.up.railway.app
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Log in to GitHub Container Registry
+      - name: Log in to the Container registry
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
@@ -49,13 +85,15 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
       - name: Install Railway CLI
         run: |
           curl -fsSL https://railway.app/install.sh | sh
           echo "$HOME/.railway/bin" >> $GITHUB_PATH
 
-      - name: Trigger Railway deploy
+      - name: Deploy to Railway
         run: |
           railway link -p 55c25933-c404-41eb-8639-a1191285aa42 -s api-gateway
           railway redeploy --service api-gateway -y
