@@ -108,12 +108,29 @@ const createApp = () => {
     })
   );
 
-  // User management with specific validation
+  // Public user routes (login, register) - no authentication required
+  app.use('/usuarios/login',
+    createProxyMiddleware({
+      target: process.env.USUARIOS_URL,
+      pathRewrite: { '^/usuarios/login': '/api/usuarios/login' },
+      ...proxyOptions
+    })
+  );
+
+  app.use('/usuarios/register',
+    createProxyMiddleware({
+      target: process.env.USUARIOS_URL,
+      pathRewrite: { '^/usuarios/register': '/api/usuarios/register' },
+      ...proxyOptions
+    })
+  );
+
+  // Protected user management routes with specific validation
   app.use('/usuarios',
     usersMiddleware.validateUserAccess,
     createProxyMiddleware({
       target: process.env.USUARIOS_URL,
-      pathRewrite: { '^/usuarios': '/usuarios' },
+      pathRewrite: { '^/usuarios': '/api/usuarios' },
       ...proxyOptions
     })
   );
@@ -123,7 +140,7 @@ const createApp = () => {
     authMiddleware.hasRole(['admin', 'supervisor']),
     createProxyMiddleware({
       target: process.env.USUARIOS_URL,
-      pathRewrite: { '^/beneficiarios': '/beneficiarios' },
+      pathRewrite: { '^/beneficiarios': '/api/beneficiarios' },
       ...proxyOptions
     })
   );
