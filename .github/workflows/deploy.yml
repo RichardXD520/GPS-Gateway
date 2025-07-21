@@ -1,4 +1,4 @@
-name: Docker Image CI
+name: Deploy GPS Gateway to Railway
 
 on:
   push:
@@ -17,6 +17,7 @@ jobs:
     permissions:
       contents: read
       packages: write
+      id-token: write
 
     steps:
       - name: Checkout repository
