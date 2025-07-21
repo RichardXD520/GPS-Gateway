@@ -102,4 +102,4 @@ jobs:
       - name: Deploy to Railway using latest CLI
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
-        run: npx @railway/cli up --service gps-gateway --no-confirm
+        run: npx @railway/cli up --service gps-gateway 
